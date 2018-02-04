@@ -415,6 +415,9 @@ static void * KVOContext = &KVOContext;
 - (void) webView: (WKWebView *) webView decidePolicyForNavigationAction: (WKNavigationAction*) navigationAction decisionHandler: (void (^)(WKNavigationActionPolicy)) decisionHandler
 {
     NSURL* url = [navigationAction.request URL];
+
+    NSLog(@"URL:%@", url);
+
     CDVViewController* vc = (CDVViewController*)self.viewController;
 
     /*
@@ -440,21 +443,34 @@ static void * KVOContext = &KVOContext;
         }
     }
 
-    if (anyPluginsResponded) {
-        return decisionHandler(shouldAllowRequest);
+    if (!anyPluginsResponded) {
+        /*
+         * Handle all other types of urls (tel:, sms:), and requests to load a url in the main webview.
+         */
+        shouldAllowRequest = [self defaultResourcePolicyForURL:url];
+        if (!shouldAllowRequest) {
+            [[NSNotificationCenter defaultCenter] postNotification:[NSNotification notificationWithName:CDVPluginHandleOpenURLNotification object:url]];
+        }
     }
 
-    /*
-     * Handle all other types of urls (tel:, sms:), and requests to load a url in the main webview.
-     */
-    BOOL shouldAllowNavigation = [self defaultResourcePolicyForURL:url];
-    if (shouldAllowNavigation) {
-        return decisionHandler(YES);
+    if (shouldAllowRequest) {
+        NSString *scheme = url.scheme;
+        if ([scheme isEqualToString:@"tel"] ||
+            [scheme isEqualToString:@"mailto"] ||
+            [scheme isEqualToString:@"facetime"] ||
+            [scheme isEqualToString:@"sms"] ||
+            [scheme isEqualToString:@"maps"] ||
+            [scheme isEqualToString:@"alipay"] ||
+            [scheme isEqualToString:@"alipays"] ||
+            [scheme isEqualToString:@"itms-services"]) {
+            [[UIApplication sharedApplication] openURL:url];
+            decisionHandler(NO);
+        } else {
+            decisionHandler(YES);
+        }
     } else {
-        [[NSNotificationCenter defaultCenter] postNotification:[NSNotification notificationWithName:CDVPluginHandleOpenURLNotification object:url]];
+        decisionHandler(NO);
     }
-
-    return decisionHandler(NO);
 }
 
 #pragma mark - Plugin interface
